@@ -1,5 +1,5 @@
-import { Check, ChevronDown, ChevronRight, Eraser, Send } from "lucide-react";
-import { useState } from "react";
+import { Check, ChevronDown, ChevronRight, Eraser, FileText, Paperclip, Send, Wand2 } from "lucide-react";
+import { useRef, useState } from "react";
 import PromptExamples from "./PromptExamples";
 import type { ChatMessage } from "../types";
 
@@ -8,17 +8,29 @@ interface Props {
   pendingJson: string;
   prompt: string;
   onSend: (prompt: string) => void;
+  onFileAction: (action: "summarize" | "edit", file: File, instruction: string) => void;
   onPromptChange: (prompt: string) => void;
   onApprove: (json: string) => void;
   onPendingJson: (json: string) => void;
   onClear: () => void;
 }
 
-export default function ChatPanel({ messages, pendingJson, prompt, onSend, onPromptChange, onApprove, onPendingJson, onClear }: Props) {
+export default function ChatPanel({ messages, pendingJson, prompt, onSend, onFileAction, onPromptChange, onApprove, onPendingJson, onClear }: Props) {
   const [jsonOpen, setJsonOpen] = useState(true);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
   const submit = () => {
     if (!prompt.trim()) return;
     onSend(prompt.trim());
+    onPromptChange("");
+  };
+  const summarizeFile = () => {
+    if (!selectedFile) return;
+    onFileAction("summarize", selectedFile, "");
+  };
+  const editFile = () => {
+    if (!selectedFile || !prompt.trim()) return;
+    onFileAction("edit", selectedFile, prompt.trim());
     onPromptChange("");
   };
 
@@ -46,6 +58,32 @@ export default function ChatPanel({ messages, pendingJson, prompt, onSend, onPro
         </div>
         <div className="border-t border-slate-300 p-4 dark:border-slate-800">
           <PromptExamples onUse={onPromptChange} />
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <input
+              ref={fileRef}
+              className="hidden"
+              type="file"
+              accept=".dxf,.svg,.png,.jpg,.jpeg,.webp,.bmp,.txt,.csv,.json,image/*"
+              onChange={(event) => setSelectedFile(event.target.files?.[0] || null)}
+            />
+            <button className="inline-flex h-9 items-center gap-2 rounded border border-slate-300 bg-white px-3 text-sm text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700" title="Attach drawing" onClick={() => fileRef.current?.click()}>
+              <Paperclip size={16} />Attach
+            </button>
+            {selectedFile && (
+              <>
+                <span className="inline-flex h-9 min-w-0 max-w-full items-center gap-2 rounded border border-slate-300 bg-slate-100 px-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
+                  <FileText size={16} className="shrink-0" />
+                  <span className="truncate">{selectedFile.name}</span>
+                </span>
+                <button className="inline-flex h-9 items-center gap-2 rounded bg-slate-700 px-3 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500" title="Summarize drawing" onClick={summarizeFile}>
+                  <FileText size={16} />Summarize
+                </button>
+                <button className="inline-flex h-9 items-center gap-2 rounded bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50" title="Edit drawing using prompt" onClick={editFile} disabled={!prompt.trim()}>
+                  <Wand2 size={16} />Edit
+                </button>
+              </>
+            )}
+          </div>
           <div className="mt-3 grid grid-cols-[1fr_42px] gap-2 sm:grid-cols-[1fr_42px_42px]">
             <textarea className="min-h-[54px] resize-none rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" value={prompt} onChange={(event) => onPromptChange(event.target.value)} onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {

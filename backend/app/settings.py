@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     ollama_url: str = "http://127.0.0.1:11434"
     preferred_model: str = "qwen2.5-coder:7b"
     fallback_model: str = "llama3.1:8b"
+    groq_api_key: str | None = None
+    groq_model: str = "openai/gpt-oss-120b"
     cors_origins: list[str] = [
         "http://localhost:5175",
         "http://127.0.0.1:5175",
@@ -14,4 +16,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-

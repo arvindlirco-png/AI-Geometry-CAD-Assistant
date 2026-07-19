@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Bot, Circle, Database, FileDown, MessageSquareText, Moon, Ruler, Settings, Shapes, Sun, Table2 } from "lucide-react";
-import { aiStatus, defaultBackendUrl, health, listDrawings, openDrawing, parsePrompt, saveDrawing, setBackendUrl } from "./api";
+import { aiStatus, defaultBackendUrl, downloadBase64File, health, listDrawings, openDrawing, parsePrompt, processDrawingFile, saveDrawing, setBackendUrl } from "./api";
 import ChatPanel from "./components/ChatPanel";
 import DimensionPanel from "./components/DimensionPanel";
 import DrawingCanvas from "./components/DrawingCanvas";
@@ -88,6 +88,25 @@ export default function App() {
     setMessages((m) => [...m, { role: "assistant", content: `${res.source}: parsed ${parsedGeometry.objects.length} shape(s).${warningText}` }]);
   }
 
+  async function handleDrawingFile(action: "summarize" | "edit", file: File, instruction: string) {
+    const userText = action === "edit" ? `Edit uploaded drawing ${file.name}: ${instruction}` : `Summarize uploaded drawing ${file.name}`;
+    setMessages((m) => [...m, { role: "user", content: userText }]);
+    try {
+      const res = await processDrawingFile(action, file, instruction);
+      const editText = res.edits.length
+        ? ` Edits: ${res.edits.map((edit) => `${edit.old_value} -> ${edit.new_value}`).join("; ")}.`
+        : "";
+      const warningText = res.warnings.length ? ` Warnings: ${res.warnings.join(" ")}` : "";
+      setMessages((m) => [...m, { role: "assistant", content: `${res.source}: ${res.summary}${editText}${warningText}` }]);
+      if (res.edited_base64 && res.edited_filename) {
+        downloadBase64File(res.edited_filename, res.edited_content_type || "application/octet-stream", res.edited_base64);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Drawing file processing failed.";
+      setMessages((m) => [...m, { role: "assistant", content: message }]);
+    }
+  }
+
   function approve(json: string) {
     try {
       const parsed = JSON.parse(json) as GeometryDocument;
@@ -167,7 +186,7 @@ export default function App() {
             })}
           </nav>
           <div className="min-h-0 flex-1 p-3 lg:p-5">
-            {tab === "Chat" && <ChatPanel messages={messages} pendingJson={pendingJson} prompt={chatDraft} onPromptChange={setChatDraft} onSend={sendPrompt} onApprove={approve} onPendingJson={setPendingJson} onClear={() => { setMessages([]); setChatDraft(""); setClarificationPrompt(null); }} />}
+            {tab === "Chat" && <ChatPanel messages={messages} pendingJson={pendingJson} prompt={chatDraft} onPromptChange={setChatDraft} onSend={sendPrompt} onFileAction={handleDrawingFile} onApprove={approve} onPendingJson={setPendingJson} onClear={() => { setMessages([]); setChatDraft(""); setClarificationPrompt(null); }} />}
             {tab === "Drawing" && <DrawingCanvas geometry={geometry} prompt={chatDraft} onPromptChange={setChatDraft} onSendPrompt={sendPrompt} onGeometryChange={setGeometry} onToggleDimensions={() => setGeometry({ ...geometry, dimensions: { ...geometry.dimensions, show: !geometry.dimensions.show } })} />}
             {tab === "Dimensions" && <DimensionPanel geometry={geometry} />}
             {tab === "Shape Data" && <ShapeTable geometry={geometry} json={pendingJson} onJson={setPendingJson} onApply={() => approve(pendingJson)} />}

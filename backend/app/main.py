@@ -3,13 +3,14 @@ from __future__ import annotations
 import csv
 import io
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 
 from .ai_parser import ai_status, parse_with_ai
 from .database import delete_drawing, get_drawing, init_db, list_drawings, save_drawing
 from .dimension_engine import dimension_table
+from .drawing_file_ai import DrawingFileResponse, edit_drawing_file, summarize_drawing_file
 from .export_dxf import render_dxf
 from .export_pdf import render_pdf
 from .export_png import render_png
@@ -47,6 +48,25 @@ async def status() -> dict:
 @app.post("/parse", response_model=ParseResponse)
 async def parse(req: ParseRequest) -> ParseResponse:
     return await parse_with_ai(req.prompt, req.current_geometry)
+
+
+@app.post("/drawing-file", response_model=DrawingFileResponse)
+async def drawing_file(
+    action: str = Form(...),
+    instruction: str = Form(""),
+    file: UploadFile = File(...),
+) -> DrawingFileResponse:
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+    filename = file.filename or "drawing"
+    if action == "summarize":
+        return await summarize_drawing_file(filename, data)
+    if action == "edit":
+        if not instruction.strip():
+            raise HTTPException(status_code=400, detail="Edit instruction is required")
+        return await edit_drawing_file(filename, data, instruction.strip())
+    raise HTTPException(status_code=400, detail="Action must be summarize or edit")
 
 
 @app.post("/draw")

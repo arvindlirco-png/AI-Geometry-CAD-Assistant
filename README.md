@@ -46,6 +46,19 @@ The backend listens on `0.0.0.0:8020`, the frontend listens on `0.0.0.0:5175`, a
 
 If Ollama is offline, the backend automatically uses the built-in regex rule parser.
 
+## Drawing Uploads
+
+The Chat tab can attach DXF, SVG, image, and text-like drawing files.
+
+- Summarize uses Ollama when available, with a local file inspection fallback.
+- Edit supports safe DXF text-label edits through Groq. It extracts TEXT/MTEXT labels, asks Groq for strict JSON edits, applies exact byte-level replacements only when the old value appears exactly once, then checks the DXF skeleton before returning the edited file.
+
+Set your Groq key before starting the backend:
+
+```bat
+set GROQ_API_KEY=your_key_here
+```
+
 ## Useful URLs
 
 - Frontend: `http://127.0.0.1:5175`

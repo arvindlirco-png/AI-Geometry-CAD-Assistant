@@ -50,6 +50,19 @@ export interface ParseResponse {
   export_format?: "svg" | "png" | "pdf" | "dxf" | "json" | "csv" | null;
 }
 
+export interface DrawingFileResponse {
+  success: boolean;
+  action: "summarize" | "edit";
+  source: string;
+  filename: string;
+  summary: string;
+  warnings: string[];
+  edits: Array<{ old_value: string; new_value: string; reason: string }>;
+  edited_filename?: string | null;
+  edited_content_type?: string | null;
+  edited_base64?: string | null;
+}
+
 export interface DrawingData {
   objects: Array<{ id: string; type: ShapeType; svg: { tag: string; attrs: Record<string, string | number> }; bbox: number[] }>;
   bbox: number[];

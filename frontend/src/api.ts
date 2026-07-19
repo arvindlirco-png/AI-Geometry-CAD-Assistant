@@ -1,5 +1,5 @@
 import axios from "axios";
-import type { ChatMessage, GeometryDocument, ParseResponse } from "./types";
+import type { ChatMessage, DrawingFileResponse, GeometryDocument, ParseResponse } from "./types";
 
 export const defaultBackendUrl = () => {
   const host = window.location.hostname;
@@ -25,6 +25,24 @@ export async function aiStatus() {
 
 export async function parsePrompt(prompt: string, current: GeometryDocument): Promise<ParseResponse> {
   return (await api.post("/parse", { prompt, current_geometry: current })).data;
+}
+
+export async function processDrawingFile(action: "summarize" | "edit", file: File, instruction = ""): Promise<DrawingFileResponse> {
+  const form = new FormData();
+  form.append("action", action);
+  form.append("instruction", instruction);
+  form.append("file", file);
+  return (await api.post("/drawing-file", form)).data;
+}
+
+export function downloadBase64File(filename: string, contentType: string, base64: string) {
+  const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+  const url = URL.createObjectURL(new Blob([bytes], { type: contentType }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 export async function drawGeometry(geometry: GeometryDocument) {
