@@ -55,12 +55,80 @@ def _text_labels_from_dxf(data: bytes) -> list[str]:
     return labels
 
 
+def _raw_text_labels_from_dxf(data: bytes) -> list[str]:
+    lines = _decode_text(data).splitlines()
+    labels: list[str] = []
+    index = 0
+    while index < len(lines) - 1:
+        code = lines[index].strip()
+        value = lines[index + 1].strip()
+        if code == "0" and value in {"TEXT", "MTEXT"}:
+            index += 2
+            chunks: list[str] = []
+            while index < len(lines) - 1:
+                next_code = lines[index].strip()
+                next_value = lines[index + 1].strip()
+                if next_code == "0":
+                    break
+                if next_code in {"1", "3"} and next_value:
+                    chunks.append(next_value)
+                index += 2
+            label = " ".join(" ".join(chunks).split())
+            if label:
+                labels.append(label)
+            continue
+        index += 2
+    return labels
+
+
+def _safe_text_labels_from_dxf(data: bytes) -> tuple[list[str], list[str]]:
+    try:
+        return _text_labels_from_dxf(data), []
+    except Exception as exc:
+        labels = _raw_text_labels_from_dxf(data)
+        return labels, [f"DXF parser warning: {exc}. Used raw TEXT/MTEXT label scan instead."]
+
+
 def _dxf_entity_counts(data: bytes) -> dict[str, int]:
     doc = ezdxf.read(io.StringIO(_decode_text(data)))
     counts: dict[str, int] = {}
     for entity in doc.modelspace():
         counts[entity.dxftype()] = counts.get(entity.dxftype(), 0) + 1
     return counts
+
+
+def _raw_dxf_entity_counts(data: bytes) -> dict[str, int]:
+    known_entities = {
+        "ARC",
+        "CIRCLE",
+        "ELLIPSE",
+        "HATCH",
+        "INSERT",
+        "LINE",
+        "LWPOLYLINE",
+        "MTEXT",
+        "POINT",
+        "POLYLINE",
+        "SOLID",
+        "SPLINE",
+        "TEXT",
+    }
+    lines = _decode_text(data).splitlines()
+    counts: dict[str, int] = {}
+    for index in range(0, len(lines) - 1, 2):
+        if lines[index].strip() == "0":
+            value = lines[index + 1].strip()
+            if value in known_entities:
+                counts[value] = counts.get(value, 0) + 1
+    return counts
+
+
+def _safe_dxf_entity_counts(data: bytes) -> tuple[dict[str, int], list[str]]:
+    try:
+        return _dxf_entity_counts(data), []
+    except Exception as exc:
+        counts = _raw_dxf_entity_counts(data)
+        return counts, [f"DXF entity parser warning: {exc}. Used raw entity count scan instead."]
 
 
 def _dxf_skeleton(data: bytes) -> dict[str, int]:
@@ -82,8 +150,10 @@ def _summarize_locally(filename: str, data: bytes) -> tuple[str, list[str]]:
     ext = _extension(filename)
     warnings: list[str] = []
     if ext == "dxf":
-        labels = _text_labels_from_dxf(data)
-        counts = _dxf_entity_counts(data)
+        labels, label_warnings = _safe_text_labels_from_dxf(data)
+        counts, count_warnings = _safe_dxf_entity_counts(data)
+        warnings.extend(label_warnings)
+        warnings.extend(count_warnings)
         label_text = ", ".join(labels[:20]) if labels else "none"
         if len(labels) > 20:
             label_text += f", plus {len(labels) - 20} more"
@@ -111,10 +181,7 @@ async def _ollama_summarize(filename: str, data: bytes, local_summary: str) -> t
         return None, "Ollama is offline or has no selected model."
     ext = _extension(filename)
     if ext == "dxf":
-        try:
-            labels = _text_labels_from_dxf(data)
-        except Exception:
-            labels = []
+        labels, _ = _safe_text_labels_from_dxf(data)
         prompt = (
             "Summarize this CAD drawing for a machinist/designer. Be concise and mention visible dimensions, labels, "
             f"and likely edit targets.\nFile: {filename}\nLocal inspection: {local_summary}\nText labels: {json.dumps(labels[:80])}"
@@ -237,9 +304,9 @@ async def edit_drawing_file(filename: str, data: bytes, instruction: str) -> Dra
     if ext != "dxf":
         summary = "Editing is currently supported for DXF text labels only. Use Summarize for raster images and other drawing formats."
         return DrawingFileResponse(success=False, action="edit", source="local", filename=filename, summary=summary, warnings=[summary])
-    labels = _text_labels_from_dxf(data)
+    labels, label_warnings = _safe_text_labels_from_dxf(data)
     edits, warning = await _ask_groq_for_edits(labels, instruction)
-    warnings = [warning] if warning else []
+    warnings = [*label_warnings, *([warning] if warning else [])]
     edited_data, applied, apply_warnings = _apply_exact_dxf_edits(data, edits)
     warnings.extend(apply_warnings)
     if not applied:
