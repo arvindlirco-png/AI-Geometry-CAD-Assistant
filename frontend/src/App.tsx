@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bot, Circle, Database, FileDown, MessageSquareText, Moon, Ruler, Settings, Shapes, Sun, Table2 } from "lucide-react";
+import { Bot, Circle, Database, FileDown, FileSearch, MessageSquareText, Moon, Ruler, Settings, Shapes, Sun, Table2 } from "lucide-react";
 import { aiStatus, defaultBackendUrl, downloadBase64File, health, listDrawings, openDrawing, parsePrompt, processDrawingFile, saveDrawing, setBackendUrl } from "./api";
 import ChatPanel from "./components/ChatPanel";
 import DimensionPanel from "./components/DimensionPanel";
+import DrawingAssistantPanel from "./components/DrawingAssistantPanel";
 import DrawingCanvas from "./components/DrawingCanvas";
 import ExportPanel from "./components/ExportPanel";
 import SettingsPanel from "./components/SettingsPanel";
@@ -17,11 +18,12 @@ const emptyGeometry: GeometryDocument = {
   dimensions: { show: true }
 };
 
-const tabs = ["Chat", "Drawing", "Dimensions", "Shape Data", "Export", "Settings"] as const;
+const tabs = ["Chat", "Drawing Assistant", "Drawing", "Dimensions", "Shape Data", "Export", "Settings"] as const;
 type Tab = typeof tabs[number];
 
 const tabIcons = {
   Chat: MessageSquareText,
+  "Drawing Assistant": FileSearch,
   Drawing: Shapes,
   Dimensions: Ruler,
   "Shape Data": Table2,
@@ -33,7 +35,9 @@ export default function App() {
   const [geometry, setGeometry] = useState<GeometryDocument>(emptyGeometry);
   const [tab, setTab] = useState<Tab>("Chat");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [drawingAssistantMessages, setDrawingAssistantMessages] = useState<ChatMessage[]>([]);
   const [chatDraft, setChatDraft] = useState("");
+  const [drawingAssistantDraft, setDrawingAssistantDraft] = useState("");
   const [pendingJson, setPendingJson] = useState(JSON.stringify(emptyGeometry, null, 2));
   const [clarificationPrompt, setClarificationPrompt] = useState<string | null>(null);
   const [backend, setBackend] = useState("checking");
@@ -90,20 +94,20 @@ export default function App() {
 
   async function handleDrawingFile(action: "summarize" | "edit", file: File, instruction: string) {
     const userText = action === "edit" ? `Edit uploaded drawing ${file.name}: ${instruction}` : `Summarize uploaded drawing ${file.name}`;
-    setMessages((m) => [...m, { role: "user", content: userText }]);
+    setDrawingAssistantMessages((m) => [...m, { role: "user", content: userText }]);
     try {
       const res = await processDrawingFile(action, file, instruction);
       const editText = res.edits.length
         ? ` Edits: ${res.edits.map((edit) => `${edit.old_value} -> ${edit.new_value}`).join("; ")}.`
         : "";
       const warningText = res.warnings.length ? ` Warnings: ${res.warnings.join(" ")}` : "";
-      setMessages((m) => [...m, { role: "assistant", content: `${res.source}: ${res.summary}${editText}${warningText}` }]);
+      setDrawingAssistantMessages((m) => [...m, { role: "assistant", content: `${res.source}: ${res.summary}${editText}${warningText}` }]);
       if (res.edited_base64 && res.edited_filename) {
         downloadBase64File(res.edited_filename, res.edited_content_type || "application/octet-stream", res.edited_base64);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Drawing file processing failed.";
-      setMessages((m) => [...m, { role: "assistant", content: message }]);
+      setDrawingAssistantMessages((m) => [...m, { role: "assistant", content: message }]);
     }
   }
 
@@ -144,7 +148,7 @@ export default function App() {
   return (
     <main className={bodyClass}>
       <div className="grid min-h-screen grid-cols-[76px_minmax(0,1fr)] bg-slate-200 text-slate-950 dark:bg-slate-950 dark:text-slate-100 lg:grid-cols-[248px_minmax(0,1fr)]">
-        <Sidebar onNew={() => { setGeometry(emptyGeometry); setMessages([]); setChatDraft(""); setClarificationPrompt(null); setTab("Chat"); }} onOpen={openSaved} onSave={persist} onExport={() => setTab("Export")} onSettings={() => setTab("Settings")} onHelp={() => setTab("Chat")} />
+        <Sidebar onNew={() => { setGeometry(emptyGeometry); setMessages([]); setDrawingAssistantMessages([]); setChatDraft(""); setDrawingAssistantDraft(""); setClarificationPrompt(null); setTab("Chat"); }} onOpen={openSaved} onSave={persist} onExport={() => setTab("Export")} onSettings={() => setTab("Settings")} onHelp={() => setTab("Chat")} />
         <section className="flex min-w-0 flex-col">
           <header className="border-b border-slate-300 bg-slate-50/95 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/95 lg:px-6">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
@@ -186,7 +190,8 @@ export default function App() {
             })}
           </nav>
           <div className="min-h-0 flex-1 p-3 lg:p-5">
-            {tab === "Chat" && <ChatPanel messages={messages} pendingJson={pendingJson} prompt={chatDraft} onPromptChange={setChatDraft} onSend={sendPrompt} onFileAction={handleDrawingFile} onApprove={approve} onPendingJson={setPendingJson} onClear={() => { setMessages([]); setChatDraft(""); setClarificationPrompt(null); }} />}
+            {tab === "Chat" && <ChatPanel messages={messages} pendingJson={pendingJson} prompt={chatDraft} onPromptChange={setChatDraft} onSend={sendPrompt} onApprove={approve} onPendingJson={setPendingJson} onClear={() => { setMessages([]); setChatDraft(""); setClarificationPrompt(null); }} />}
+            {tab === "Drawing Assistant" && <DrawingAssistantPanel messages={drawingAssistantMessages} prompt={drawingAssistantDraft} onPromptChange={setDrawingAssistantDraft} onFileAction={handleDrawingFile} onClear={() => { setDrawingAssistantMessages([]); setDrawingAssistantDraft(""); }} />}
             {tab === "Drawing" && <DrawingCanvas geometry={geometry} prompt={chatDraft} onPromptChange={setChatDraft} onSendPrompt={sendPrompt} onGeometryChange={setGeometry} onToggleDimensions={() => setGeometry({ ...geometry, dimensions: { ...geometry.dimensions, show: !geometry.dimensions.show } })} />}
             {tab === "Dimensions" && <DimensionPanel geometry={geometry} />}
             {tab === "Shape Data" && <ShapeTable geometry={geometry} json={pendingJson} onJson={setPendingJson} onApply={() => approve(pendingJson)} />}
