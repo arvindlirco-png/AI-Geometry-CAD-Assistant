@@ -1,0 +1,9 @@
+backend/.venv/
+backend/cad_drawings.db
+cad_drawings.db
+backend/app/__pycache__/
+frontend/node_modules/
+frontend/dist/
+*.pyc
+*.log
+.env
